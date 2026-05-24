@@ -1,0 +1,43 @@
+[project]
+name = "finance-router-classifier"
+version = "0.1.0"
+description = "A uv-managed finance task-route classifier inspired by vLLM Semantic Router."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = "MIT"
+authors = [{ name = "Jaiydev Gupta" }]
+keywords = ["finance", "llm", "routing", "classifier", "modernbert", "uv"]
+dependencies = [
+  "datasets>=3.0.0",
+  "numpy>=1.26.0",
+  "scikit-learn>=1.4.0",
+  "torch>=2.3.0",
+  "tqdm>=4.66.0",
+  "transformers>=4.48.0,<5",
+]
+
+[project.scripts]
+finance-router = "finance_router.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/finance_router"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
