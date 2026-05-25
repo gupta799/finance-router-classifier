@@ -30,8 +30,8 @@ from finance_router.schema import RouterExample, read_jsonl
 @dataclass(frozen=True)
 class TrainConfig:
     model_name: str = "answerdotai/ModernBERT-base"
-    train_path: str = "data/processed/train.jsonl"
-    eval_path: str = "data/processed/eval.jsonl"
+    train_path: str = "data-gen/data/synthetic-10k/train.jsonl"
+    eval_path: str = "data-gen/data/synthetic-10k/eval.jsonl"
     out_dir: str = "models/finance-router"
     device: str = "mps"
     max_length: int = 1024

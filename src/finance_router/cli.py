@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from finance_router.data import build_and_write_dataset
 from finance_router.modeling import (
     TrainConfig,
     evaluate_model_dir,
@@ -23,37 +22,13 @@ def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2))
 
 
-def cmd_build_data(args: argparse.Namespace) -> None:
-    summary = build_and_write_dataset(
-        out_dir=Path(args.out),
-        train_size=args.train_size,
-        eval_size=args.eval_size,
-        seed=args.seed,
-        candidate_multiplier=args.candidate_multiplier,
-        max_sujet_rows=args.max_sujet_rows,
-    )
-    print_json(summary)
-
-
 def ensure_training_data(args: argparse.Namespace) -> tuple[Path, Path]:
     train_path = Path(args.train) if args.train else Path(args.data_dir) / "train.jsonl"
     eval_path = Path(args.eval) if args.eval else Path(args.data_dir) / "eval.jsonl"
-    custom_paths = args.train or args.eval
-    missing_custom_path = not train_path.exists() or not eval_path.exists()
-    if custom_paths and missing_custom_path:
+    if not train_path.exists() or not eval_path.exists():
         raise SystemExit(
-            "Custom --train/--eval paths must both exist. "
-            "Omit them to auto-build data under --data-dir."
-        )
-    missing = not train_path.exists() or not eval_path.exists()
-    if missing or args.rebuild_data:
-        build_and_write_dataset(
-            out_dir=Path(args.data_dir),
-            train_size=args.train_size,
-            eval_size=args.eval_size,
-            seed=args.seed,
-            candidate_multiplier=args.candidate_multiplier,
-            max_sujet_rows=args.max_sujet_rows,
+            "Training data was not found. Generate it in the data-gen submodule first, "
+            "or pass explicit --train/--eval JSONL paths."
         )
     return train_path, eval_path
 
@@ -118,22 +93,13 @@ def cmd_plot_metrics(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="finance-router",
-        description="Build data, train, evaluate, and run a finance route classifier.",
+        description="Train, evaluate, and run a finance route classifier.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    build_data = subparsers.add_parser("build-data", help="Build JSONL train/eval data.")
-    build_data.add_argument("--out", default="data/processed")
-    build_data.add_argument("--train-size", type=int, default=4000)
-    build_data.add_argument("--eval-size", type=int, default=1000)
-    build_data.add_argument("--seed", type=int, default=7)
-    build_data.add_argument("--candidate-multiplier", type=int, default=6)
-    build_data.add_argument("--max-sujet-rows", type=int)
-    build_data.set_defaults(func=cmd_build_data)
-
     train = subparsers.add_parser("train", help="Train the ModernBERT route classifier.")
     train.add_argument("--model-name", default="answerdotai/ModernBERT-base")
-    train.add_argument("--data-dir", default="data/processed")
+    train.add_argument("--data-dir", default="data-gen/data/synthetic-10k")
     train.add_argument("--train")
     train.add_argument("--eval")
     train.add_argument("--out-dir", default="models/finance-router")
@@ -149,11 +115,6 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--limit-train", type=int)
     train.add_argument("--limit-eval", type=int)
     train.add_argument("--log-every-steps", type=int, default=25)
-    train.add_argument("--train-size", type=int, default=4000)
-    train.add_argument("--eval-size", type=int, default=1000)
-    train.add_argument("--candidate-multiplier", type=int, default=6)
-    train.add_argument("--max-sujet-rows", type=int)
-    train.add_argument("--rebuild-data", action="store_true")
     train.add_argument("--wandb-project", default=os.getenv("WANDB_PROJECT"))
     train.add_argument("--wandb-entity", default=os.getenv("WANDB_ENTITY"))
     train.add_argument("--wandb-run-name", default=os.getenv("WANDB_RUN_NAME"))
@@ -167,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     evaluate = subparsers.add_parser("evaluate", help="Evaluate a saved classifier.")
     evaluate.add_argument("--model-dir", default="models/finance-router")
-    evaluate.add_argument("--test", default="data/processed/eval.jsonl")
+    evaluate.add_argument("--test", default="data-gen/data/synthetic-10k/eval.jsonl")
     evaluate.add_argument("--device", choices=["cuda", "mps", "cpu", "auto"], default="mps")
     evaluate.add_argument("--max-length", type=int)
     evaluate.add_argument("--batch-size", type=int, default=8)

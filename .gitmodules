@@ -1,0 +1,3 @@
+[submodule "data-gen"]
+	path = data-gen
+	url = https://github.com/gupta799/synthetic-data-gen.git

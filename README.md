@@ -19,54 +19,59 @@ finance-vs-nonfinance detector.
 ## Setup
 
 ```bash
+git submodule update --init --recursive
 uv sync --python 3.12
 ```
 
 ## Build Data
 
+Data generation lives in the `data-gen` submodule:
+
 ```bash
-uv run finance-router build-data \
-  --train-size 4000 \
-  --eval-size 1000 \
-  --out data/processed
+cd data-gen
+
+uv run synthetic-data-gen build \
+  --out data/synthetic-10k \
+  --train-size 8000 \
+  --eval-size 2000 \
+  --generator-model gemma4:e2b \
+  --ollama-base-url http://localhost:11434 \
+  --embedding-model BAAI/bge-small-en-v1.5 \
+  --wandb-project finance-router-data-gen \
+  --langsmith-project finance-router-data-gen
 ```
 
-The builder writes:
+Then train the classifier from the generated JSONL files:
 
-- `data/processed/train.jsonl`
-- `data/processed/eval.jsonl`
-- `data/processed/summary.json`
+```bash
+cd ..
+uv run finance-router train \
+  --device mps \
+  --train data-gen/data/synthetic-10k/train.jsonl \
+  --eval data-gen/data/synthetic-10k/eval.jsonl \
+  --batch-size 4 \
+  --max-length 768 \
+  --epochs 3 \
+  --out-dir models/finance-router-synthetic-10k
+```
 
-Each split is balanced across the five routes: 800 train and 200 eval examples per route for the
-default 4k/1k dataset.
-
-Data sources:
-
-- `PatronusAI/financebench`
-- `sujet-ai/Sujet-Financial-RAG-EN-Dataset`
-
-The builder stores `label_rule`, `template_id`, and `group_key` in every row's metadata. It fails if
-the exact requested per-route quotas cannot be met without group leakage.
-
-FinanceBench is licensed CC BY-NC 4.0, so artifacts trained from the default dataset should be
-treated as non-commercial unless that source is replaced.
-
-See [docs/DATASET.md](docs/DATASET.md) for the full candidate generation, labeling, and leakage
-control rules.
+See [docs/DATASET.md](docs/DATASET.md) for the repo boundary and data handoff.
 
 ## Train
 
 ```bash
 uv run finance-router train \
   --device mps \
+  --train data-gen/data/synthetic-10k/train.jsonl \
+  --eval data-gen/data/synthetic-10k/eval.jsonl \
   --model-name answerdotai/ModernBERT-base \
   --epochs 3 \
-  --batch-size 8 \
-  --max-length 1024
+  --batch-size 4 \
+  --max-length 768
 ```
 
-If `data/processed/train.jsonl` and `data/processed/eval.jsonl` do not exist, `train` builds them
-first with the configured `--train-size` and `--eval-size`.
+Training data must already exist. Generate it in `data-gen`, or pass explicit `--train` and `--eval`
+JSONL paths.
 
 For RunPod or any CUDA host, use `--device auto` or `--device cuda`. `auto` resolves in this order:
 CUDA, Apple MPS, then CPU.
@@ -82,10 +87,12 @@ wandb login
 
 uv run finance-router train \
   --device mps \
+  --train data-gen/data/synthetic-10k/train.jsonl \
+  --eval data-gen/data/synthetic-10k/eval.jsonl \
   --batch-size 4 \
   --max-length 768 \
   --wandb-project finance-router-classifier \
-  --wandb-run-name mps-bs4-len768
+  --wandb-run-name synthetic-10k-gemma4-e2b
 ```
 
 For local dry runs that can sync later:
@@ -93,6 +100,8 @@ For local dry runs that can sync later:
 ```bash
 uv run finance-router train \
   --device mps \
+  --train data-gen/data/synthetic-10k/train.jsonl \
+  --eval data-gen/data/synthetic-10k/eval.jsonl \
   --batch-size 4 \
   --max-length 768 \
   --wandb-project finance-router-classifier \
@@ -148,11 +157,10 @@ Prediction output:
 
 ```bash
 uv run pytest
-uv run finance-router build-data --train-size 400 --eval-size 100 --out data/smoke-sized
 uv run finance-router train \
   --device cpu \
-  --train data/smoke-sized/train.jsonl \
-  --eval data/smoke-sized/eval.jsonl \
+  --train data-gen/data/smoke/train.jsonl \
+  --eval data-gen/data/smoke/eval.jsonl \
   --epochs 1 \
   --max-steps 2
 ```

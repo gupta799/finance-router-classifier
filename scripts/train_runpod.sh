@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TRAIN_SIZE="${TRAIN_SIZE:-4000}"
-EVAL_SIZE="${EVAL_SIZE:-1000}"
+TRAIN_SIZE="${TRAIN_SIZE:-8000}"
+EVAL_SIZE="${EVAL_SIZE:-2000}"
+DATA_DIR="${DATA_DIR:-data-gen/data/synthetic-10k}"
+GENERATOR_MODEL="${GENERATOR_MODEL:-gemma4:e2b}"
 MODEL_NAME="${MODEL_NAME:-answerdotai/ModernBERT-base}"
 OUT_DIR="${OUT_DIR:-models/finance-router}"
 EPOCHS="${EPOCHS:-3}"
@@ -28,16 +30,25 @@ fi
 
 uv sync --python 3.12
 
-uv run finance-router build-data \
-  --train-size "${TRAIN_SIZE}" \
-  --eval-size "${EVAL_SIZE}" \
-  --out data/processed
+git submodule update --init --recursive
+
+if [[ ! -f "${DATA_DIR}/train.jsonl" || ! -f "${DATA_DIR}/eval.jsonl" ]]; then
+  (
+    cd data-gen
+    uv sync --python 3.12
+    uv run synthetic-data-gen build \
+      --train-size "${TRAIN_SIZE}" \
+      --eval-size "${EVAL_SIZE}" \
+      --out "${DATA_DIR#data-gen/}" \
+      --generator-model "${GENERATOR_MODEL}"
+  )
+fi
 
 uv run finance-router train \
   --device auto \
   --model-name "${MODEL_NAME}" \
-  --train data/processed/train.jsonl \
-  --eval data/processed/eval.jsonl \
+  --train "${DATA_DIR}/train.jsonl" \
+  --eval "${DATA_DIR}/eval.jsonl" \
   --out-dir "${OUT_DIR}" \
   --epochs "${EPOCHS}" \
   --batch-size "${BATCH_SIZE}" \
@@ -48,7 +59,7 @@ uv run finance-router train \
 uv run finance-router evaluate \
   --device auto \
   --model-dir "${OUT_DIR}" \
-  --test data/processed/eval.jsonl \
+  --test "${DATA_DIR}/eval.jsonl" \
   --batch-size "${BATCH_SIZE}"
 
 uv run finance-router plot-metrics \
@@ -58,5 +69,5 @@ uv run finance-router plot-metrics \
 mkdir -p outputs
 tar -czf outputs/finance-router-artifacts.tar.gz \
   "${OUT_DIR}" \
-  data/processed/summary.json \
+  "${DATA_DIR}/summary.json" \
   "${REPORT_DIR}"

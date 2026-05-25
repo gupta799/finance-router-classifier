@@ -8,7 +8,6 @@ license = "MIT"
 authors = [{ name = "Jaiydev Gupta" }]
 keywords = ["finance", "llm", "routing", "classifier", "modernbert", "uv"]
 dependencies = [
-  "datasets>=3.0.0",
   "matplotlib>=3.8.0",
   "numpy>=1.26.0",
   "scikit-learn>=1.4.0",
