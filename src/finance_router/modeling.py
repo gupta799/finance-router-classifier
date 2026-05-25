@@ -44,6 +44,12 @@ class TrainConfig:
     max_steps: int | None = None
     limit_train: int | None = None
     limit_eval: int | None = None
+    log_every_steps: int = 25
+    wandb_project: str | None = None
+    wandb_entity: str | None = None
+    wandb_run_name: str | None = None
+    wandb_mode: str = "online"
+    wandb_log_model: bool = False
 
 
 class PromptRouteDataset(Dataset):
@@ -207,6 +213,52 @@ def load_max_length(model_dir: Path, fallback: int) -> int:
     return int(payload.get("max_length") or fallback)
 
 
+def start_wandb_run(
+    config: TrainConfig,
+    *,
+    device: torch.device,
+    train_rows: list[RouterExample],
+    eval_rows: list[RouterExample],
+) -> Any | None:
+    if not config.wandb_project or config.wandb_mode == "disabled":
+        return None
+    try:
+        import wandb
+    except ImportError as exc:
+        raise RuntimeError(
+            "Weights & Biases logging was requested, but wandb is not installed. "
+            "Run `uv sync` and try again."
+        ) from exc
+
+    run_config = asdict(config)
+    run_config.update(
+        {
+            "resolved_device": str(device),
+            "train_rows": len(train_rows),
+            "eval_rows": len(eval_rows),
+            "labels": list(LABELS),
+        }
+    )
+    run = wandb.init(
+        project=config.wandb_project,
+        entity=config.wandb_entity,
+        name=config.wandb_run_name,
+        mode=config.wandb_mode,
+        config=run_config,
+    )
+    run.define_metric("train/*", step_metric="global_step")
+    run.define_metric("eval/*", step_metric="global_step")
+    return run
+
+
+def log_model_artifact_to_wandb(run: Any, out_dir: Path) -> None:
+    import wandb
+
+    artifact = wandb.Artifact(name=out_dir.name, type="model")
+    artifact.add_dir(str(out_dir))
+    run.log_artifact(artifact)
+
+
 def train_classifier(config: TrainConfig) -> dict[str, Any]:
     set_seed(config.seed)
     train_rows = read_jsonl(Path(config.train_path))
@@ -224,6 +276,12 @@ def train_classifier(config: TrainConfig) -> dict[str, Any]:
     tokenizer = load_tokenizer(config.model_name)
     model = load_sequence_classifier(config.model_name)
     model.to(device)
+    wandb_run = start_wandb_run(
+        config,
+        device=device,
+        train_rows=train_rows,
+        eval_rows=eval_rows,
+    )
 
     train_loader = make_loader(
         train_rows,
@@ -270,9 +328,25 @@ def train_classifier(config: TrainConfig) -> dict[str, Any]:
             scheduler.step()
 
             global_step += 1
-            running_loss += float(loss.detach().cpu()) * labels.numel()
+            step_loss = float(loss.detach().cpu())
+            running_loss += step_loss * labels.numel()
             running_examples += labels.numel()
             progress.set_postfix(loss=running_loss / max(running_examples, 1))
+            if (
+                wandb_run is not None
+                and config.log_every_steps > 0
+                and (global_step == 1 or global_step % config.log_every_steps == 0)
+            ):
+                wandb_run.log(
+                    {
+                        "global_step": global_step,
+                        "train/loss": step_loss,
+                        "train/running_loss": running_loss / max(running_examples, 1),
+                        "train/learning_rate": scheduler.get_last_lr()[0],
+                        "train/epoch": epoch + 1,
+                    },
+                    step=global_step,
+                )
 
             if config.max_steps is not None and global_step >= config.max_steps:
                 stop = True
@@ -297,6 +371,18 @@ def train_classifier(config: TrainConfig) -> dict[str, Any]:
             },
         }
         history.append(epoch_metrics)
+        if wandb_run is not None:
+            wandb_run.log(
+                {
+                    "global_step": global_step,
+                    "train/epoch_loss": epoch_metrics["train_loss"],
+                    "eval/loss": eval_metrics["loss"],
+                    "eval/accuracy": eval_metrics["accuracy"],
+                    "eval/macro_f1": eval_metrics["macro_f1"],
+                    "epoch": epoch + 1,
+                },
+                step=global_step,
+            )
         if stop:
             break
 
@@ -319,6 +405,15 @@ def train_classifier(config: TrainConfig) -> dict[str, Any]:
         encoding="utf-8",
     )
     (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    if wandb_run is not None:
+        final_eval = history[-1]["eval"] if history else {}
+        wandb_run.summary["train_seconds"] = metrics["train_seconds"]
+        wandb_run.summary["global_step"] = global_step
+        wandb_run.summary["eval_accuracy"] = final_eval.get("accuracy")
+        wandb_run.summary["eval_macro_f1"] = final_eval.get("macro_f1")
+        if config.wandb_log_model:
+            log_model_artifact_to_wandb(wandb_run, out_dir)
+        wandb_run.finish()
     return metrics
 
 

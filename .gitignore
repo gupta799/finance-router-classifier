@@ -10,6 +10,7 @@ htmlcov/
 data/
 models/
 outputs/
+wandb/
 dist/
 build/
 *.egg-info/

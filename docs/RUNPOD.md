@@ -24,10 +24,18 @@ Useful overrides:
 BATCH_SIZE=4 MAX_LENGTH=768 EPOCHS=2 ./scripts/train_runpod.sh
 ```
 
+Weights & Biases logging is controlled by environment variables:
+
+```bash
+wandb login
+WANDB_PROJECT=finance-router-classifier WANDB_RUN_NAME=runpod-a10 ./scripts/train_runpod.sh
+```
+
 Outputs:
 
 - trained model in `models/finance-router`
 - dataset summary in `data/processed/summary.json`
+- local graphs in `reports/finance-router-training`
 - packed artifacts in `outputs/finance-router-artifacts.tar.gz`
 
 The generated data and model artifacts are intentionally git-ignored.

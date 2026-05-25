@@ -73,6 +73,49 @@ CUDA, Apple MPS, then CPU.
 
 See [docs/RUNPOD.md](docs/RUNPOD.md) for the one-command GPU training path.
 
+## Weights & Biases
+
+Weights & Biases logging is opt-in. Set a project name, then train as usual:
+
+```bash
+wandb login
+
+uv run finance-router train \
+  --device mps \
+  --batch-size 4 \
+  --max-length 768 \
+  --wandb-project finance-router-classifier \
+  --wandb-run-name mps-bs4-len768
+```
+
+For local dry runs that can sync later:
+
+```bash
+uv run finance-router train \
+  --device mps \
+  --batch-size 4 \
+  --max-length 768 \
+  --wandb-project finance-router-classifier \
+  --wandb-mode offline
+```
+
+## Training Graphs
+
+Generate pushable local reports from a saved training run:
+
+```bash
+uv run finance-router plot-metrics \
+  --model-dir models/finance-router \
+  --out reports/finance-router-training
+```
+
+This writes:
+
+- `reports/finance-router-training/training_curves.png`
+- `reports/finance-router-training/metrics.csv`
+- `reports/finance-router-training/metrics.json`
+- `reports/finance-router-training/README.md`
+
 ## Evaluate
 
 ```bash

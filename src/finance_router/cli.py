@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from finance_router.modeling import (
     predict_text,
     train_classifier,
 )
+from finance_router.reporting import build_training_report
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -74,6 +76,12 @@ def cmd_train(args: argparse.Namespace) -> None:
         max_steps=args.max_steps,
         limit_train=args.limit_train,
         limit_eval=args.limit_eval,
+        log_every_steps=args.log_every_steps,
+        wandb_project=args.wandb_project,
+        wandb_entity=args.wandb_entity,
+        wandb_run_name=args.wandb_run_name,
+        wandb_mode=args.wandb_mode,
+        wandb_log_model=args.wandb_log_model,
     )
     print_json(train_classifier(config))
 
@@ -101,6 +109,10 @@ def cmd_predict(args: argparse.Namespace) -> None:
             max_length=args.max_length,
         )
     )
+
+
+def cmd_plot_metrics(args: argparse.Namespace) -> None:
+    print_json(build_training_report(model_dir=Path(args.model_dir), out_dir=Path(args.out)))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -136,11 +148,21 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--max-steps", type=int)
     train.add_argument("--limit-train", type=int)
     train.add_argument("--limit-eval", type=int)
+    train.add_argument("--log-every-steps", type=int, default=25)
     train.add_argument("--train-size", type=int, default=4000)
     train.add_argument("--eval-size", type=int, default=1000)
     train.add_argument("--candidate-multiplier", type=int, default=6)
     train.add_argument("--max-sujet-rows", type=int)
     train.add_argument("--rebuild-data", action="store_true")
+    train.add_argument("--wandb-project", default=os.getenv("WANDB_PROJECT"))
+    train.add_argument("--wandb-entity", default=os.getenv("WANDB_ENTITY"))
+    train.add_argument("--wandb-run-name", default=os.getenv("WANDB_RUN_NAME"))
+    train.add_argument(
+        "--wandb-mode",
+        choices=["online", "offline", "disabled"],
+        default=os.getenv("WANDB_MODE", "online"),
+    )
+    train.add_argument("--wandb-log-model", action="store_true")
     train.set_defaults(func=cmd_train)
 
     evaluate = subparsers.add_parser("evaluate", help="Evaluate a saved classifier.")
@@ -157,6 +179,14 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--max-length", type=int)
     predict.add_argument("prompt", nargs="*")
     predict.set_defaults(func=cmd_predict)
+
+    plot_metrics = subparsers.add_parser(
+        "plot-metrics",
+        help="Render local PNG/CSV/Markdown training graphs from a saved metrics.json.",
+    )
+    plot_metrics.add_argument("--model-dir", default="models/finance-router")
+    plot_metrics.add_argument("--out", default="reports/finance-router-training")
+    plot_metrics.set_defaults(func=cmd_plot_metrics)
     return parser
 
 

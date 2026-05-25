@@ -9,6 +9,22 @@ EPOCHS="${EPOCHS:-3}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
 MAX_LENGTH="${MAX_LENGTH:-1024}"
 LEARNING_RATE="${LEARNING_RATE:-2e-5}"
+REPORT_DIR="${REPORT_DIR:-reports/finance-router-training}"
+WANDB_PROJECT="${WANDB_PROJECT:-}"
+WANDB_ENTITY="${WANDB_ENTITY:-}"
+WANDB_RUN_NAME="${WANDB_RUN_NAME:-}"
+WANDB_MODE="${WANDB_MODE:-online}"
+
+WANDB_ARGS=()
+if [[ -n "${WANDB_PROJECT}" ]]; then
+  WANDB_ARGS+=(--wandb-project "${WANDB_PROJECT}" --wandb-mode "${WANDB_MODE}")
+fi
+if [[ -n "${WANDB_ENTITY}" ]]; then
+  WANDB_ARGS+=(--wandb-entity "${WANDB_ENTITY}")
+fi
+if [[ -n "${WANDB_RUN_NAME}" ]]; then
+  WANDB_ARGS+=(--wandb-run-name "${WANDB_RUN_NAME}")
+fi
 
 uv sync --python 3.12
 
@@ -26,7 +42,8 @@ uv run finance-router train \
   --epochs "${EPOCHS}" \
   --batch-size "${BATCH_SIZE}" \
   --max-length "${MAX_LENGTH}" \
-  --learning-rate "${LEARNING_RATE}"
+  --learning-rate "${LEARNING_RATE}" \
+  "${WANDB_ARGS[@]}"
 
 uv run finance-router evaluate \
   --device auto \
@@ -34,5 +51,12 @@ uv run finance-router evaluate \
   --test data/processed/eval.jsonl \
   --batch-size "${BATCH_SIZE}"
 
+uv run finance-router plot-metrics \
+  --model-dir "${OUT_DIR}" \
+  --out "${REPORT_DIR}"
+
 mkdir -p outputs
-tar -czf outputs/finance-router-artifacts.tar.gz "${OUT_DIR}" data/processed/summary.json
+tar -czf outputs/finance-router-artifacts.tar.gz \
+  "${OUT_DIR}" \
+  data/processed/summary.json \
+  "${REPORT_DIR}"
